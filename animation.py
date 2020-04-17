@@ -8,15 +8,17 @@ import matplotlib.patches as patches
 import os
 from shapely.geometry import Point, Polygon
 import time
+import matplotlib.patches as mpatches
 
 # FLAGS
-savemp4 = True
-debug = False
-highlight_zones = False # makes things slow TODO
-borderCol = None # alternative : 'black'
+savemp4 = False
+debug = True
+highlight_zones = True # makes things slow TODO
+borderCol = 'black' # alternative : 'black'
 frameskip_count = 4	
 animation_fps = 10 # TODO: change these numbers as per convenience
 mp4_fps = 15
+
 if debug:
 	frameskip_count = 1
 	animation_fps = 1
@@ -50,6 +52,33 @@ plt.plot([103.835, 104.03], [1.16, 1.22], c='black')
 #Zone info input from files
 zoneTypeFileNames =  ['ACHARE.shp', 'LNDARE.shp', 'FAIRWY.shp', 'PILBOP.shp', 'TSSLPT.shp', 'BERTHS.shp']
 zoneTypeColors = ['lavender', 'darkseagreen', 'lightpink', 'peru', 'paleturquoise', 'olive']
+
+# Map all the files,(Extremely slow..)
+completeMap = False
+if debug and completeMap:
+	zoneTypeFileNames =  ['ACHARE.shp','BCNSPP.shp','BOYLAT.shp','BUAARE.shp','CBLARE.shp','CTNARE.shp'
+	,'DMPGRD.shp','HRBFAC.shp','LNDMRK.shp','M_NPUB.shp','OBSTRN.shp','PONTON.shp'
+	,'RECTRC.shp','SILTNK.shp','TOPMAR.shp','TS_FEB.shp','BCNCAR.shp','BERTHS.shp'
+	,'BOYSAW.shp','BUISGL.shp','CBLSUB.shp','CTRPNT.shp','DRGARE.shp','LIGHTS.shp'
+	,'MAGVAR.shp','M_NSYS.shp','PILPNT.shp','PRCARE.shp','RESARE.shp','SISTAW.shp'
+	,'TSELNE.shp','UWTROC.shp','BCNISD.shp','BOYCAR.shp','BOYSPP.shp','CANALS.shp'
+	,'COALNE.shp','DEPARE.shp','FAIRWY.shp','LNDARE.shp','MORFAC.shp','M_QUAL.shp'
+	,'PIPARE.shp','RAILWY.shp','SBDARE.shp','SLCONS.shp','TSSBND.shp','VEGATN.shp'
+	,'BCNLAT.shp','BOYINB.shp','BRIDGE.shp','CAUSWY.shp','CONVYR.shp','DEPCNT.shp'
+	,'HRBARE.shp','LNDELV.shp','M_COVR.shp','NAVLNE.shp','PIPSOL.shp','RDOCAL.shp'
+	,'SEAARE.shp','SOUNDG.shp','TSSLPT.shp','WRECKS.shp']
+	print("zoneTypeFileNames.length", len(zoneTypeFileNames))
+	zoneTypeColors = ['lavender', 'darkseagreen', 'lightpink', 'peru', 'paleturquoise', 'olive'
+	,'lavender', 'darkseagreen', 'lightpink', 'peru', 'paleturquoise', 'olive'
+	,'lavender', 'darkseagreen', 'lightpink', 'peru', 'paleturquoise', 'olive'
+	,'lavender', 'darkseagreen', 'lightpink', 'peru', 'paleturquoise', 'olive'
+	,'lavender', 'darkseagreen', 'lightpink', 'peru', 'paleturquoise', 'olive'
+	,'lavender', 'darkseagreen', 'lightpink', 'peru', 'paleturquoise', 'olive'
+	,'lavender', 'darkseagreen', 'lightpink', 'peru', 'paleturquoise', 'olive'
+	,'lavender', 'darkseagreen', 'lightpink', 'peru', 'paleturquoise', 'olive'
+	,'lavender', 'darkseagreen', 'lightpink', 'peru', 'paleturquoise', 'olive'
+	,'lavender', 'darkseagreen', 'lightpink', 'peru', 'paleturquoise', 'olive'
+	,'lavender', 'darkseagreen', 'lightpink', 'peru']
 
 #Store full paths of all zonefiles
 zoneFiles = {}
@@ -88,7 +117,7 @@ if debug:
 	print(polygon_points)
 	poly = Polygon(zip(longs, lats))
 	custom_polygon = gpd.GeoDataFrame(index=[0], crs=None, geometry=[poly])
-	custom_polygon.plot(ax=ax, color='red', edgecolors=borderCol)
+	# custom_polygon.plot(ax=ax, color='red', edgecolors=borderCol)
 
 gpd_shps = []
 
@@ -209,10 +238,13 @@ MAIN
 n_frames =n_frames // frameskip_count
 print("n_frames: ", n_frames)
 if debug:
-	n_frames = 10
+	n_frames = 20
 
 ani = FuncAnimation(fig, update, frames=n_frames, init_func=init, blit=True, repeat=False, interval = 1000/animation_fps)
 if savemp4:
 	ani.save('video_new.mp4', fps=mp4_fps)
 else:
+	# legend
+	handles = [mpatches.Patch(color=col, label=description) for col, description in zip(zoneTypeColors, zoneTypeFileNames)]
+	plt.legend(bbox_to_anchor=(1.0, 1.0), loc='upper left', title="legend", borderaxespad=0.,handles=handles)
 	plt.show()
