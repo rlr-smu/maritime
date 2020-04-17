@@ -1,12 +1,30 @@
 import pandas as pd
 import geopandas as gpd
 import numpy as np
+import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 import matplotlib.patches as patches
 import os
 from shapely.geometry import Point
+import time
 
+savemp4 = False
+debug = False
+highlight_zones = False # makes things slow TODO
+
+frameskip_count = 4	
+animation_fps = 10 # TODO: change these numbers to convenience
+mp4_fps = 15
+if debug:
+	frameskip_count = 1
+	animation_fps = 1
+	mp4_fps = 2
+
+	
+
+if(savemp4):
+	matplotlib.use("Agg")
 parent_dir = '/mnt/c/Users/chetu/work/maritime/encdata/'
 # vessel_dir = '/home/kushagra06/Documents/inter_vessels/'
 
@@ -20,7 +38,7 @@ fairwy = []
 pilbop = []
 tsslpt = []
 
-frameskip_count = 4
+
 
 fig, ax = plt.subplots()
 ax.set_xlim(103.535, 104.03)
@@ -61,11 +79,12 @@ for d in dirs:
 				else:
 					zoneFiles[f] = [d+'/'+f]
 for (zoneType,zoneFileList) in zoneFiles.items():
+	# print(zoneType)
 	colorr = zoneTypeColors[zoneTypeFileNames.index(zoneType)]
 	# print(f,colorr)
 	for zoneFile in zoneFileList:
 		gdf = gpd.GeoDataFrame.from_file(zoneFile)
-		gdf.plot(ax=ax, color=colorr)
+		gdf.plot(ax=ax, color=colorr, edgecolors='black')
 			# if f == 'ACHARE.shp':
 			# 	achare.append(d+'/'+f)
 			# elif f == 'BERTHS.shp':
@@ -81,6 +100,11 @@ for (zoneType,zoneFileList) in zoneFiles.items():
 
 # shps = achare + lndare + fairwy + pilbop + tsslpt
 
+# print("Pilot Points")
+# for zoneFile in zoneFiles['PILBOP.shp']:
+# 	polygons = gpd.GeoDataFrame.from_file(zoneFile)
+# 	for polygon_key, value in enumerate(polygons.geometry.values):
+# 		print(polygon_key, value)
 gpd_shps = []
 
 
@@ -194,7 +218,10 @@ def init():
 	return []
 	# return patch,
 
+startTime = time.time()
 def update(frame):
+
+	print("frame %d: %.2f"%(frame, time.time()-startTime))
 	# if frame < n_frames:
 	frame = frame * frameskip_count	
 	global patch
@@ -261,39 +288,50 @@ def update(frame):
 	# 					col[polygon_key] = 'red'
 	# 					# print(key,ii, type(value))
 	# 	seazone_polygons.plot(ax=ax, color=col)
-	shp_pnts = gpd.GeoDataFrame(geometry=ship_cur_positions)
 	
-	for (zoneType,zoneFileList) in zoneFiles.items():
-		colorr = zoneTypeColors[zoneTypeFileNames.index(zoneType)]
-		# print(f,colorr)
-		
-		for zoneFile in zoneFileList:
-			seazone_polygons = gpd.GeoDataFrame.from_file(zoneFile)
-
-			# seazone_polygons = gpd.GeoDataFrame.from_file(t)
-
+	if highlight_zones:
+		shp_pnts = gpd.GeoDataFrame(geometry=ship_cur_positions)
+		# plt.cla()
+		for (zoneType,zoneFileList) in zoneFiles.items():
+			colorr = zoneTypeColors[zoneTypeFileNames.index(zoneType)]
+			# print(f,colorr)
 			
-			# print("shp_pnts:", shp_pnts)
-			seazone_polygons.crs = None
-			col = [colorr] * len(seazone_polygons.geometry.values) # get the default color here.
-			for polygon_key, value in enumerate(seazone_polygons.geometry.values):
-					vals = shp_pnts.within(value)
-					# print("len(pnts)", len(pnts))
-					for pnt_key, is_inside in enumerate(vals):
-						if(is_inside):
-							col[polygon_key] = 'red'
-							# print(key,ii, type(value))
-			seazone_polygons.plot(ax=ax, color=col)
+			for zoneFile in zoneFileList:
+				seazone_polygons = gpd.GeoDataFrame.from_file(zoneFile)
+
+				# seazone_polygons = gpd.GeoDataFrame.from_file(t)
+
+				
+				# print("shp_pnts:", shp_pnts)
+				seazone_polygons.crs = None
+				col = [colorr] * len(seazone_polygons.geometry.values) # get the default color here.
+				for polygon_key, value in enumerate(seazone_polygons.geometry.values):
+						vals = shp_pnts.within(value)
+						# print("len(pnts)", len(pnts))
+						for pnt_key, is_inside in enumerate(vals):
+							if(is_inside):
+								col[polygon_key] = 'red' 	# TODO: if you want the color intensity to represent the number
+															# of ships, increment some value here, and decide the color outside loop based on that value
+															# TODO: also, 4 for loops here, there's scope for optimisation
+								break
+							
+				seazone_polygons.plot(ax=ax, color=col, edgecolors='black')
 
 
-			# gdf.plot(ax=ax, color=colorr)
+				# gdf.plot(ax=ax, color=colorr)
 
 	return []
 	# return patch,
-fps = 24
-ani = FuncAnimation(fig, update, frames=n_frames, init_func=init, blit=True, repeat_delay=1000/fps)
-# ani.save('a_new.mp4', fps=20)
-plt.show()
+
+print("n_frames: ", n_frames)
+if debug:
+	n_frames = 10
+
+ani = FuncAnimation(fig, update, frames=n_frames, init_func=init, blit=True, repeat=False, interval = 1000/animation_fps)
+if savemp4:
+	ani.save('video_new.mp4', fps=mp4_fps)
+else:
+	plt.show()
 # plt.savefig('sg_boundaries.png')
 
 # 103.62, 1.32 
