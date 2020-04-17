@@ -6,14 +6,14 @@ import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 import matplotlib.patches as patches
 import os
-from shapely.geometry import Point
+from shapely.geometry import Point, Polygon
 import time
 
 # FLAGS
-savemp4 = False
+savemp4 = True
 debug = False
 highlight_zones = False # makes things slow TODO
-
+borderCol = None # alternative : 'black'
 frameskip_count = 4	
 animation_fps = 10 # TODO: change these numbers as per convenience
 mp4_fps = 15
@@ -69,14 +69,26 @@ for (zoneType,zoneFileList) in zoneFiles.items():
 	# print(f,colorr)
 	for zoneFile in zoneFileList:
 		gdf = gpd.GeoDataFrame.from_file(zoneFile)
-		gdf.plot(ax=ax, color=colorr, edgecolors='black')
+		gdf.plot(ax=ax, color=colorr, edgecolors=borderCol)
+		
 
 if debug:
-	print("Pilot Points")
-	for zoneFile in zoneFiles['PILBOP.shp']:
+	print("TSSLPT")
+	for zoneFile in zoneFiles['TSSLPT.shp']:
+		print("\n\n", zoneFile, "\n\n")
 		polygons = gpd.GeoDataFrame.from_file(zoneFile)
 		for polygon_key, value in enumerate(polygons.geometry.values):
 			print(polygon_key, value)
+		break
+	
+	# Testing adding polygon:
+	polygon_points = [(103.95, 1.05) ,(104.0, 1.10),(103.95, 1.15),(103.95, 1.05)]
+	longs = [x[0] for x in polygon_points]
+	lats = [x[1] for x in polygon_points]
+	print(polygon_points)
+	poly = Polygon(zip(longs, lats))
+	custom_polygon = gpd.GeoDataFrame(index=[0], crs=None, geometry=[poly])
+	custom_polygon.plot(ax=ax, color='red', edgecolors=borderCol)
 
 gpd_shps = []
 
@@ -167,7 +179,7 @@ def update(frame):
 
 			ship_cur_positions.append(Point(new_lon,new_lat))
 	
-	# whether to highlight the zones the ship is currently in (Slow :( ) TODO: make it fast
+	# whether to highlight the zones the ship is currently in. Slow :(  TODO: make it fast
 	if highlight_zones:
 		shp_pnts = gpd.GeoDataFrame(geometry=ship_cur_positions)
 		for (zoneType,zoneFileList) in zoneFiles.items():
