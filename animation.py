@@ -12,8 +12,8 @@ import matplotlib.patches as mpatches
 
 # FLAGS
 savemp4 = False
-debug = True
-highlight_zones = True # makes things slow TODO
+debug = False
+highlight_zones = False # makes things slow TODO: optimise
 borderCol = 'black' # alternative : 'black'
 frameskip_count = 4	
 animation_fps = 10 # TODO: change these numbers as per convenience
@@ -52,6 +52,12 @@ plt.plot([103.835, 104.03], [1.16, 1.22], c='black')
 #Zone info input from files
 zoneTypeFileNames =  ['ACHARE.shp', 'LNDARE.shp', 'FAIRWY.shp', 'PILBOP.shp', 'TSSLPT.shp', 'BERTHS.shp']
 zoneTypeColors = ['lavender', 'darkseagreen', 'lightpink', 'peru', 'paleturquoise', 'olive']
+sea_zone_file = 'TSSLPT.SHP'
+jamesMap = True
+if jamesMap:
+	zoneTypeFileNames =  ['zones.shp', 'landPolygons.shp']
+	zoneTypeColors = ['paleturquoise', 'darkseagreen']
+	sea_zone_file = 'zones.shp'
 
 # Map all the files,(Extremely slow..)
 completeMap = False
@@ -93,17 +99,16 @@ for d in dirs:
 
 # Load the GeoDataframe from files
 for (zoneType,zoneFileList) in zoneFiles.items():
-	# print(zoneType)
+	print(zoneType)
 	colorr = zoneTypeColors[zoneTypeFileNames.index(zoneType)]
-	# print(f,colorr)
+	print(f,colorr)
 	for zoneFile in zoneFileList:
 		gdf = gpd.GeoDataFrame.from_file(zoneFile)
 		gdf.plot(ax=ax, color=colorr, edgecolors=borderCol)
 		
 
 if debug:
-	print("TSSLPT")
-	for zoneFile in zoneFiles['TSSLPT.shp']:
+	for zoneFile in zoneFiles[sea_zone_file]:
 		print("\n\n", zoneFile, "\n\n")
 		polygons = gpd.GeoDataFrame.from_file(zoneFile)
 		for polygon_key, value in enumerate(polygons.geometry.values):
@@ -117,7 +122,11 @@ if debug:
 	print(polygon_points)
 	poly = Polygon(zip(longs, lats))
 	custom_polygon = gpd.GeoDataFrame(index=[0], crs=None, geometry=[poly])
-	# custom_polygon.plot(ax=ax, color='red', edgecolors=borderCol)
+	custom_polygon.plot(ax=ax, color='darkslategray', edgecolors=borderCol)
+
+	# add multiple polygons..
+	
+
 
 gpd_shps = []
 
@@ -125,7 +134,7 @@ gpd_shps = []
 # 	gpd.GeoDataFrame.from_file(b).plot(ax=ax, alpha=0.4, marker='.', color='olive', edgecolors='black')
 
 # Load vessel Data
-vessel_csv_filename='inter_vessel_sample_st0.csv'
+vessel_csv_filename='data/inter_vessel_sample_st0.csv' # the interpolated data. TODO: get it working for non interpolated one
 all_vessels = [pd.read_csv(vessel_csv_filename)]
 
 total_vessels = len(all_vessels)
@@ -229,6 +238,37 @@ def update(frame):
 								break
 							
 				seazone_polygons.plot(ax=ax, color=col, edgecolors='black')
+	highlight_custom_zones= False
+	if highlight_custom_zones:
+		shp_pnts = gpd.GeoDataFrame(geometry=ship_cur_positions)
+		
+		pivot_point= (103.8, 1.15)
+		diff_point = (0.065,0.0325)
+		vert_diff = 0.01
+		for i in range(3):
+			for j in range(4):
+				polygon_points = [(pivot_point[0]+ j* diff_point[0], pivot_point[1]+vert_diff * i + j * diff_point[1])  
+					,(pivot_point[0]+ (j+1)* diff_point[0], pivot_point[1]+vert_diff * i + (j+1) * diff_point[1]) 
+					,(pivot_point[0]+ (j+1)* diff_point[0], pivot_point[1]+vert_diff * (i+1) + (j+1) * diff_point[1]) 
+					,(pivot_point[0]+ (j)* diff_point[0], pivot_point[1]+vert_diff * (i+1) + (j) * diff_point[1]) 
+					,(pivot_point[0]+ j* diff_point[0], pivot_point[1]+vert_diff * i + j * diff_point[1])  
+					]
+				lonngs = [x[0] for x in polygon_points]
+				latts = [x[1] for x in polygon_points]
+				# print(polygon_points)
+				poly = Polygon(zip(lonngs, latts))
+				custom_polygon = gpd.GeoDataFrame(index=[0], crs=None, geometry=[poly])
+				col = 'wheat'
+				# if(i==2 and j==1):
+				# 	col ='red'
+				for polygon_key, value in enumerate(custom_polygon.geometry.values):
+						vals = shp_pnts.within(value)
+						for pnt_key, is_inside in enumerate(vals):
+							if(is_inside):
+								col = 'green'
+				
+				custom_polygon.plot(ax=ax, color=col, edgecolors=borderCol)
+
 
 	return []
 
