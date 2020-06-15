@@ -21,6 +21,7 @@ parser.add_argument("--rows_to_read", type=int,  default=1000, help="limit the n
 parser.add_argument("--interval", type=int,  default=2, help="interval in minutes between each frame")
 parser.add_argument("--parent_dir", default='/mnt/c/Users/chetu/work/maritime/encdata/', help='directory with ENC zone data')
 parser.add_argument("--color_on_type",  type=bool, default=True, help='Color ships based on type or status')
+parser.add_argument("--video_name", default='maritime', help='video will be media/"video_name"YYYYMMDD_HHmm.mp4')
 
 opt = parser.parse_args()
 print(opt)
@@ -50,14 +51,20 @@ if(savemp4):
 
 vesselcolor = {
 	'VESSEL TYPE':{
-		'Bunkering Tanker':'red',
-		'Cargo':'blue',
-		'other':'yellow'
+		# 'Bunkering Tanker':'red',
+		# 'Cargo':'blue',
+		'Bulk Carrier':'black',
+		'Container Ship':'red',
+		'Crude Oil Tanker':'chocolate',
+		'Oil/Chemical Tanker':'sandybrown',
+		'Oil Products Tanker':'peru',
+		'other':'blue'
 	},
 	'STATUS':{
 		0:'red',
 		1:'blue',
-		5:'green',
+		5:'blueviolet',
+		99:'black',
 		'other':'yellow'
 	}
 }
@@ -76,7 +83,7 @@ pilbop = []
 tsslpt = []
 
 # setting up Plot
-fig, ax = plt.subplots()
+fig, ax = plt.subplots(figsize=(16,9))
 ax.set_xlim(103.535, 104.03)
 ax.set_ylim(1.02, 1.32)
 
@@ -226,6 +233,7 @@ def getVesselColor():
 data = pd.read_csv(vessel_csv_filename)
 datalen = min(rows_to_read, len(data["MMSI"]))
 data = data.replace({np.nan:None})
+
 exact_starttime = datetime.strptime(data["TIMESTAMP"][0], timestamp_format) 
 exact_endtime = datetime.strptime(data["TIMESTAMP"][datalen-1], timestamp_format) 
 
@@ -291,7 +299,7 @@ def update(frame):
 	global time_text
 
 	[p.remove() for p in reversed(ax.patches)]
-	arrowScale = 0.015
+	arrowScale = 0.008
 	ship_cur_positions = []
 	time_text.set_text(timesteps[frame])
 	for mmsi, vessel in interpolatedLatlongs[frame].items():
@@ -392,6 +400,6 @@ handles = handles + [mpatches.Patch(color=col, label=description) for descriptio
 plt.legend(bbox_to_anchor=(1.0, 1.0), loc='upper left', title="legend", borderaxespad=0.,handles=handles)
 	
 if savemp4:
-	ani.save('media/maritime'+datetime.now().strftime('%Y%m%d_%H%M')+'.mp4', fps=mp4_fps)
+	ani.save('media/'+opt.video_name+datetime.now().strftime('%Y%m%d_%H%M')+'.mp4', fps=mp4_fps, dpi=100)
 else:
 	plt.show()
