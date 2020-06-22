@@ -172,12 +172,13 @@ def atboundary(lon):
     return True if lon < minlon or lon > maxlon else False
 
 trajcol = ['red'] * 2 + ['slateblue'] * 2 + ['green'] * 2 + ['sandybrown'] * 2
-traj_type = {}
+
 def categorise_trajectory(trajectories):
     traj_freq= [0] *32
     traj_type_sample = [''] * 32
     discarded = 0
 
+    traj_type = {}
     traj_index=0
     for traj_id, trajectory in trajectories.items():
         if(traj_index %1000 ==0):
@@ -186,6 +187,7 @@ def categorise_trajectory(trajectories):
 
         if(len(trajectory) <10):
             discarded +=1
+            traj_type[traj_id] = -1
             continue
         traj_type_id = 0
 
@@ -217,10 +219,10 @@ def categorise_trajectory(trajectories):
             lons = [ data['LON'][rowid] for rowid in trajectory]
             plt.plot( lons, lats, color='blue', alpha=1.0, linewidth=1, linestyle='-' if traj_type_id % 2 == 0 else '--')
     print("discarded: ", discarded)
-    
-    return traj_freq, traj_type_sample
+    # print(traj_type)
+    return traj_freq, traj_type_sample, traj_type
         
-def save_traj_table(trajectories):
+def save_traj_table(trajectories, traj_type):
 
     '''save the ship table first'''
     ship_df = pd.DataFrame(columns=['MMSI_TRAJID', 'VESSEL TYPE', 'LENGTH', 'WIDTH', 'IMO', 'DESTINATION'])
@@ -269,19 +271,22 @@ def save_traj_table(trajectories):
 #-----------------------------------------------------------
 fig, ax = plt.subplots(figsize=(16,9))
 
+print("len(trajectories): , ", len(trajectories))
 
 # destination(vessels)
 break_trajectory(vessels)
 
 print("done with break_trajectory: %.2f" % (time.time()-startime))
 # print(trajectories)
+print("len(trajectories): , ", len(trajectories))
 
 # destination(trajectories)
 # sys.exit()
-traj_freq, traj_type_sample = categorise_trajectory(trajectories)
+traj_freq, traj_type_sample, traj_type = categorise_trajectory(trajectories)
+print("len(traj_type , ", len(traj_type))
 
 if(opt.save_traj_table):
-    save_traj_table(trajectories)
+    save_traj_table(trajectories, traj_type)
 
 if(opt.trajectory_type_analysis):
     ax.set_xlim(103.535, 104.03)
@@ -304,13 +309,14 @@ if(opt.trajectory_type_analysis):
         gdf.plot(ax=ax, color=colorr, edgecolors=borderCol)
     plt.show()
 
-
+print("len(trajectories): , ", len(trajectories))
+print("len(traj_type , ", len(traj_type))
 # zone transit time analysis
 if(opt.zone_transit):
     '''for a given zone, identify the trajectores going through that zone and calculate time taken'''
 
     # zones_to_plot = [x for x in range(64)]
-    zones_to_plot = [14]
+    zones_to_plot = [41]
     
     zoneFile = opt.zone_file
     gdf = gpd.GeoDataFrame.from_file(zoneFile)
@@ -318,11 +324,15 @@ if(opt.zone_transit):
     poly_count = len(polygons)
 
     time_diffs = []
+    print("len(trajectories): , ", len(trajectories))
+    print("len(traj_type , ", len(traj_type))
+
     for mmsi, trajectory in trajectories.items():
+        # print("mmsi: ", mmsi )
         if(mmsi not in traj_type):
-            print("traj id not found", mmsi)
+            print("traj id not found", mmsi) #TODO : this line should never get printed. yet it does...
             continue
-        if(traj_type[mmsi] != 4): # only looking at europe to china ships
+        if(traj_type[mmsi] == 4): # only looking at europe to china ships
             continue
         points = []
         for rowid in trajectory:
@@ -347,12 +357,13 @@ if(opt.zone_transit):
                 elif(already_inside == True):
                     already_inside = False
                     break # TODO: no need to break if taken care of multiple entry to a zone in a trajectory
-            # print(entry_id, exit_id)
+            if(entry_id !=-1):
+                print(points[entry_id], points[exit_id])
             if(entry_id!=-1 and not already_inside):
-                print(mmsi, totime(data['TIMESTAMP'][entry_id]), totime(data['TIMESTAMP'][exit_id]))
-                time_diff = (totime(data['TIMESTAMP'][exit_id]) - totime(data['TIMESTAMP'][entry_id]))
+                print(mmsi, totime(data['TIMESTAMP'][trajectory[entry_id]]), totime(data['TIMESTAMP'][trajectory[exit_id]]))
+                time_diff = (totime(data['TIMESTAMP'][trajectory[exit_id]]) - totime(data['TIMESTAMP'][trajectory[entry_id]]))
                 time_diffs.append(time_diff) # change when expanding to multiple zones
     print(time_diffs)
 
-    plt.hist([x.total_seconds() for  x in time_diffs], bins=[x for  x in range(0,100,1)])
+    plt.hist([x.total_seconds() for  x in time_diffs], bins=[x for  x in range(0,765,15)])
     plt.show()
