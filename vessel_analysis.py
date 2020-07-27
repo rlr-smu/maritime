@@ -31,6 +31,7 @@ timestamp_format = '%Y-%m-%d %H:%M:%S'
 
 data = pd.read_csv(vessel_csv_filename)
 datalen = min(rows_to_read, len(data["MMSI"]))
+print("datalen", datalen)
 data = data.replace({np.nan:None})
 
 columns = ['MMSI', 'VESSEL TYPE', 'LENGTH', 'WIDTH', 'IMO', 'DESTINATION', 'STATUS', 'SPEED (KNOTSx10)', 'LON', 'LAT', 'COURSE', 'HEADING', 'TIMESTAMP']
@@ -122,7 +123,7 @@ def interpolate(arr, t): # TODO: optimise
 def break_trajectory(vessels):
 
     vid = 0
-    printevery = 100
+    printevery = 1
     for mmsi, vesselrows in vessels.items():
         if(vid % printevery == 0):
             print("breaking vessel %d, time: %.2f" % (vid, time.time()-startime))
@@ -225,9 +226,10 @@ def categorise_trajectory(trajectories):
 def save_traj_table(trajectories, traj_type):
 
     '''save the ship table first'''
-    ship_df = pd.DataFrame(columns=['MMSI_TRAJID', 'VESSEL TYPE', 'LENGTH', 'WIDTH', 'IMO', 'DESTINATION'])
+    ship_df = pd.DataFrame(columns=['MMSI_TRAJID', 'VESSEL TYPE', 'LENGTH', 'WIDTH', 'IMO', 'DESTINATION', 'TRAJ_TYPE'])
     for i, key in enumerate(trajectories):
-        ship_df.loc[i]= [key] + [ data[x][trajectories[key][0]] for x in columns[1:6] ]
+        print(key)
+        ship_df.loc[i]= [key] + [ data[x][trajectories[key][0]] for x in columns[1:6] ] + [traj_type[key]]
     ship_df.to_csv('data/all_mmsi_traj.csv', index=False)
     
     '''save the events table'''
@@ -316,7 +318,7 @@ if(opt.zone_transit):
     '''for a given zone, identify the trajectores going through that zone and calculate time taken'''
 
     # zones_to_plot = [x for x in range(64)]
-    zones_to_plot = [41]
+    zones_to_plot = [14]
     
     zoneFile = opt.zone_file
     gdf = gpd.GeoDataFrame.from_file(zoneFile)
@@ -324,6 +326,7 @@ if(opt.zone_transit):
     poly_count = len(polygons)
 
     time_diffs = []
+    speeds = []
     print("len(trajectories): , ", len(trajectories))
     print("len(traj_type , ", len(traj_type))
 
@@ -332,7 +335,7 @@ if(opt.zone_transit):
         if(mmsi not in traj_type):
             print("traj id not found", mmsi) #TODO : this line should never get printed. yet it does...
             continue
-        if(traj_type[mmsi] == 4): # only looking at europe to china ships
+        if(traj_type[mmsi] != 4 and traj_type[mmsi] != 5 and traj_type[mmsi] != 1): # only looking at 'to china' ships
             continue
         points = []
         for rowid in trajectory:
@@ -360,10 +363,28 @@ if(opt.zone_transit):
             if(entry_id !=-1):
                 print(points[entry_id], points[exit_id])
             if(entry_id!=-1 and not already_inside):
+                speeds.append(data['SPEED (KNOTSx10)'][trajectory[exit_id]]) # appending both entry and exit speeds
+                speeds.append(data['SPEED (KNOTSx10)'][trajectory[entry_id]])
+
                 print(mmsi, totime(data['TIMESTAMP'][trajectory[entry_id]]), totime(data['TIMESTAMP'][trajectory[exit_id]]))
                 time_diff = (totime(data['TIMESTAMP'][trajectory[exit_id]]) - totime(data['TIMESTAMP'][trajectory[entry_id]]))
                 time_diffs.append(time_diff) # change when expanding to multiple zones
-    print(time_diffs)
+                print(time_diff)
 
-    plt.hist([x.total_seconds() for  x in time_diffs], bins=[x for  x in range(0,765,15)])
+    transit_times = [x.total_seconds() for  x in time_diffs]
+    transit_times = [x for x in transit_times if x>150] #just eliminating the early exitors
+    # time analysis
+    print("len(transit_times) ", len(transit_times))
+    print("max(transit_times) ", max(transit_times))
+    print("min(transit_times) ", min(transit_times))
+    print("avg(transit_times) ", sum(transit_times)*1.0/len(transit_times))
+
+
+    # speed analysis
+    print("len(speed) ", len(speeds))
+    print("max(speed) ", max(speeds))
+    print("min(speed) ", min(speeds))
+    print("avg(speed) ", sum(speeds)*1.0/len(speeds))
+
+    plt.hist(transit_times, bins=[x for  x in range(0,int(max(transit_times))+15,15)])
     plt.show()
