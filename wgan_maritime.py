@@ -11,16 +11,8 @@ from torch.utils.data import Dataset
 import torch.nn as nn
 import torch.nn.functional as F
 import torch
-import matplotlib
-import matplotlib.pyplot as plt
-from matplotlib.animation import FuncAnimation
+from matplotlib import pyplot as plt
 from matplotlib.pyplot import savefig
-from datetime import datetime, timedelta
-
-savemp4 = True
-if(savemp4):
-	matplotlib.use("Agg")
-
 os.makedirs("images", exist_ok=True)
 
 parser = argparse.ArgumentParser()
@@ -154,13 +146,8 @@ plt_id =1
 # ----------
 
 batches_done = 0
+for epoch in range(opt.n_epochs):
 
-# for epoch in range(opt.n_epochs):
-def update(frameid):
-    global batches_done, plt_id
-
-
-    epoch = frameid
     for i, (datapoint) in enumerate(dataloader):
 
         # Configure input
@@ -178,16 +165,16 @@ def update(frameid):
         # Generate a batch of images
         fake_imgs = generator(z).detach()
         # Adversarial loss
-        loss_D = -torch.mean(discriminator(real_imgs)) + torch.mean(discriminator(fake_imgs))
+        # loss_D = -torch.mean(discriminator(real_imgs)) + torch.mean(discriminator(fake_imgs))
 
-        loss_D.backward()
-        optimizer_D.step()
-
-        # gp = gradient_penalty(fake_imgs.data, real_imgs.data, discriminator)
-        # lambda1 = 10
-        # errD = -torch.mean(discriminator(real_imgs)) + torch.mean(discriminator(fake_imgs)) + lambda1 * gp 
         # loss_D.backward()
         # optimizer_D.step()
+
+        gp = gradient_penalty(fake_imgs.data, real_imgs.data, discriminator)
+        lambda1 = 10
+        errD = -torch.mean(discriminator(real_imgs)) + torch.mean(discriminator(fake_imgs)) + lambda1 * gp 
+        loss_D.backward()
+        optimizer_D.step()
 
         # Clip weights of discriminator
         for p in discriminator.parameters():
@@ -255,14 +242,4 @@ def update(frameid):
                 # savefig('wgan_test.png' )
 
         batches_done += 1
-
-animation_fps = 24 
-mp4_fps = 24
-n_frames = 100
-ani = FuncAnimation(fig, update, frames=n_frames, blit=False, repeat=False, interval = 1000/animation_fps)	
-if savemp4:
-	ani.save('media/'+'wgan_progress_'+datetime.now().strftime('%Y%m%d_%H%M')+'.mp4', fps=mp4_fps, dpi=100)
-else:
-	plt.show()
-
-# plt.show()
+plt.show()
