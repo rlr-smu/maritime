@@ -26,18 +26,25 @@ parser.add_argument("--n_epochs", type=int, default=200, help="number of epochs 
 parser.add_argument("--batch_size", type=int, default=64, help="size of the batches")
 parser.add_argument("--lr", type=float, default=0.00005, help="learning rate")
 parser.add_argument("--n_cpu", type=int, default=8, help="number of cpu threads to use during batch generation")
-parser.add_argument("--latent_dim", type=int, default=2, help="dimensionality of the latent space")
+parser.add_argument("--zone", type=int, default=1, help="zoneid of dataset")
+parser.add_argument("--seed", type=int, default=7, help="seed to reproduce the results")
+parser.add_argument("--latent_dim", type=int, default=16, help="dimensionality of the latent space")
 parser.add_argument("--n_critic", type=int, default=5, help="number of training steps for discriminator per iter")
 parser.add_argument("--clip_value", type=float, default=0.01, help="lower and upper clip value for disc. weights")
 parser.add_argument("--sample_interval", type=int, default=400, help="interval betwen generator samples")
-parser.add_argument("--savemp4", type=bool, default=False, help="savemp4?")
+parser.add_argument("--plot", type=bool, default=False, help="plot the graphs")
+parser.add_argument("--savemp4", type=bool, default=False, help="savemp4?[plot has to be true for this to be true]")
 parser.add_argument("--improved_wgan", type=bool, default=False, help="use improved wgan(gradient penalty)?")
+parser.add_argument("--datafile", type=str, default='frodotransittimes.txt', help="real dataset file")
 
 opt = parser.parse_args()
 print(opt)
 
+np.random.seed(opt.seed)
+torch.manual_seed(opt.seed)
+
 savemp4 = opt.savemp4
-if(savemp4):
+if(opt.plot and savemp4):
 	matplotlib.use("Agg")
 
 point_shape = (1,) # to model a 1D distribution
@@ -68,19 +75,21 @@ def _gradient_penalty(generated_data, real_data, discriminator):
     Gradient penalty term for improved Wgan
     '''
     # print("generated_data.shape ",generated_data.shape)
-    real_data = real_data.view(-1,1,1,1)
+    real_data = real_data.view(-1, 1)
     # print("real_data.shape ",real_data.shape)
 
     batch_size = real_data.size()[0]
     
     # Calculate interpolation
-    alpha = torch.rand(batch_size, 1, 1, 1)
+    alpha = torch.rand(batch_size, 1)
     alpha = alpha.expand_as(real_data)
+    # print("alpha.shape ",alpha.shape)
 
     interpolated = alpha * real_data.data + (1 - alpha) * generated_data.data
     interpolated = Variable(interpolated, requires_grad=True)
 
     # Calculate probability of interpolated examples
+    # print("interpolated.shape", interpolated.shape)
     prob_interpolated = discriminator(interpolated)
 
     # Calculate gradients of probabilities with respect to examples
@@ -101,7 +110,7 @@ def _gradient_penalty(generated_data, real_data, discriminator):
 
 class timeDeltaDataset(Dataset):
     def __init__(self):
-        with open('frodotransittimes.txt', 'r') as f:
+        with open(opt.datafile, 'r') as f:
             self.raw_samples = eval(f.read())
             self.min_sample = min(self.raw_samples)
             self.max_sample = 10800 #max(self.raw_samples) , ignoring the other samples
@@ -131,15 +140,15 @@ class Generator(nn.Module):
             layers = [nn.Linear(in_feat, out_feat)]
             if normalize:
                 layers.append(nn.BatchNorm1d(out_feat, 0.8))
-            # layers.append(nn.LeakyReLU(0.2, inplace=True))
+            layers.append(nn.LeakyReLU(0.2, inplace=True))
             return layers
 
         self.model = nn.Sequential(
             *block(opt.latent_dim, 16, normalize=False),
-            # *block(128, 256),
+            *block(16, 32),
             # *block(256, 512),
             # *block(512, 1024),
-            nn.Linear(16, int(np.prod(point_shape))),
+            nn.Linear(32, int(np.prod(point_shape))),
             nn.Tanh()
         )
 
@@ -154,11 +163,11 @@ class Discriminator(nn.Module):
         super(Discriminator, self).__init__()
 
         self.model = nn.Sequential(
-            nn.Linear(int(np.prod(point_shape)), 32),
+            nn.Linear(int(np.prod(point_shape)), 64),
             nn.LeakyReLU(0.2, inplace=True),
-            # nn.Linear(512, 256),
+            # nn.Linear(32, 32),
             # nn.LeakyReLU(0.2, inplace=True),
-            nn.Linear(32, 1),
+            nn.Linear(64, 1),
         )
 
     def forward(self, output):
@@ -169,6 +178,7 @@ class Discriminator(nn.Module):
 
 # Initialize generator and discriminator
 generator = Generator()
+generator = torch.load('models/generator'+str(opt.zone))
 discriminator = Discriminator()
 
 if cuda:
@@ -195,6 +205,7 @@ optimizer_D = torch.optim.RMSprop(discriminator.parameters(), lr=opt.lr)
 Tensor = torch.cuda.FloatTensor if cuda else torch.FloatTensor
 
 fig, axes = plt.subplots(1, 2, figsize=(16,9))
+ax2 = axes[1].twinx()
 # ----------
 #  Training
 # ----------
@@ -202,6 +213,8 @@ fig, axes = plt.subplots(1, 2, figsize=(16,9))
 batches_done = 0
 dis_losses = []
 gen_losses = []
+kls = []
+minksdist = 1.0
 
 def normalise(arr, minn, maxx):
     arrmin = min(arr)
@@ -209,13 +222,31 @@ def normalise(arr, minn, maxx):
     scale = (maxx-minn)/(arrmax-arrmin)
     return [(x-arrmin)*scale for x in arr]
 
+def kl_distance(dist1, dist2):
+    # print("len(dist1)", len(dist1))
+    # print("len(dist2)", len(dist2))
+    i1 = 0
+    i2 = 0
+    max_cum_dist = 0
+    dist1 = sorted(dist1)
+    dist2 = sorted(dist2)
+    while i1 < len(dist1) and i2 < len(dist2):
+        if dist1[i1] < dist2[i2]:
+            i1 +=1
+        else:
+            i2 += 1
+        max_cum_dist = max(abs(i1-i2), max_cum_dist)
+
+    return max_cum_dist * 1.0 / 1024 
 # single Epoch Iteration, this is called from FuncAnimation for each epoch.
 def update(frameid):
-    global batches_done, dis_losses, gen_losses
+    global batches_done, dis_losses, gen_losses, minksdist
     axes[0].clear()
     axes[1].clear()
-
+    ax2.clear()
     epoch = frameid
+    if(epoch+1 == opt.n_epochs):
+        print("minksdist:", minksdist)
     for i, (datapoint) in enumerate(dataloader):
 
         # Configure input
@@ -235,7 +266,8 @@ def update(frameid):
         # Adversarial loss
         loss_D = -torch.mean(discriminator(real_pnts)) + torch.mean(discriminator(fake_pnts))
         if(opt.improved_wgan):
-            loss_D = loss_D + 10 * _gradient_penalty(fake_pnts, real_pnts, discriminator)
+            penalty_weight = 5.0
+            loss_D = loss_D + penalty_weight * _gradient_penalty(fake_pnts, real_pnts, discriminator)
         loss_D.backward()
         optimizer_D.step()
 
@@ -277,45 +309,56 @@ def update(frameid):
     dis_losses.append(loss_D.item())
     gen_losses.append(loss_G.item())
     
-    # plot the generated points
-
-    #=======right graph========#
-    axes[1].set_title('Generator & Critic error functions')
-    axes[1].set_xlabel('epochs')
-    axes[1].set_ylabel('loss')
-    diff = gen_losses[0] - dis_losses[0]
-    axes[1].plot(dis_losses, color='red', label = 'Critic loss')
-    axes[1].plot([gl-diff for gl in gen_losses], color='blue', label = 'Generator loss')
-    axes[1].legend(loc='upper left')
-    
-
-    #=======left graph========#
+    # get fake points
     latent = Variable(Tensor(np.random.normal(0, 1, (1024, opt.latent_dim))))
     generated_ts = generator(latent)
     gen_pts = generated_ts.view(-1).detach().numpy()
 
     # UnNormalise gen_pts back to original 'time to cross' space
     gen_pts = [y*(dataset.max_sample-dataset.zero) + dataset.zero for y in gen_pts]
-    print(len(gen_pts))
+    # print(len(gen_pts))
     
-    hist_size = 120
-    axes[0].hist(gen_pts, bins=[x for  x in range(-2*hist_size,int(max(gen_pts))+hist_size,hist_size)], label='fake', alpha=0.5)
-    axes[0].hist(real_pts, bins=[x for  x in range(-2*hist_size,int(max(real_pts))+hist_size,hist_size)], label='real', alpha=0.5)
-    axes[0].set_xlabel('data_point(x)')
-    axes[0].set_ylabel('number of datapoints(for histograms). critic(x) for line')
-
-    #plot discriminator function (normalised to range 0 to 100).
-    gens_np = np.linspace(-1, 1, 201)
-    gens = gens_np*(dataset.max_sample-dataset.zero) + dataset.zero
-    gens_tens = Tensor(gens_np)
-    outs = discriminator(gens_tens)
-    outs_np = outs.detach().numpy().reshape(-1)
-    outs_np = normalise(outs_np,0,100)
-
-    axes[0].plot(gens, outs_np,label= 'normalised discriminator '+ str(epoch))
-    axes[0].set_title('Real Data vs. Generated Data')
-    axes[0].legend(loc='upper left')
+    ksdist = kl_distance(gen_pts, real_pts)
+    kls.append(ksdist)
+    if(ksdist < minksdist):
+        minksdist = ksdist
+        #save weights
+        torch.save(generator, 'models/generator'+str(opt.zone))
+    
+    # plot the generated points
+    if(opt.plot):
+        #=======right graph========#
+        axes[1].set_title(opt.datafile+' batch_size:'+str(opt.batch_size)+' lr:'+str(opt.lr)+ ' '+('gradient penalty' if opt.improved_wgan else 'vanilla'))
+        axes[1].set_xlabel('epochs')
+        axes[1].set_ylabel('loss')
+        diff = gen_losses[0] - dis_losses[0]
+        axes[1].plot(dis_losses, color='red', label = 'Critic loss')
+        axes[1].plot([gl-diff for gl in gen_losses], color='blue', label = 'Generator loss')
+        # plot normalised KL distance
         
+        
+        ax2.plot(kls, color='orange', label = 'KL distance')
+        axes[1].legend(loc='upper left')
+        ax2.legend(loc='upper right')
+        #=======left graph========#
+        hist_size = 120
+        axes[0].hist(gen_pts, bins=[x for  x in range(-2*hist_size,int(max(gen_pts))+hist_size,hist_size)], label='fake', alpha=0.5)
+        axes[0].hist(real_pts, bins=[x for  x in range(-2*hist_size,int(max(real_pts))+hist_size,hist_size)], label='real', alpha=0.5)
+        axes[0].set_xlabel('data_point(x)')
+        axes[0].set_ylabel('number of datapoints(for histograms). critic(x) for line')
+
+        #plot discriminator function (normalised to range 0 to 100).
+        gens_np = np.linspace(-1, 1, 201)
+        gens = gens_np*(dataset.max_sample-dataset.zero) + dataset.zero
+        gens_tens = Tensor(gens_np)
+        outs = discriminator(gens_tens)
+        outs_np = outs.detach().numpy().reshape(-1)
+        outs_np = normalise(outs_np,0,100)
+
+        axes[0].plot(gens, outs_np,label= 'normalised discriminator '+ str(epoch))
+        axes[0].set_title('Real Data vs. Generated Data')
+        axes[0].legend(loc='upper left')
+        fig.tight_layout() 
     return []
 
 animation_fps = 240 
@@ -323,6 +366,6 @@ mp4_fps = 24
 n_frames = opt.n_epochs
 ani = FuncAnimation(fig, update, frames=n_frames, blit=False, repeat=False, interval = 1000/animation_fps)	
 if savemp4:
-	ani.save('media/'+'wgan_progress_'+datetime.now().strftime('%Y%m%d_%H%M')+'.mp4', fps=mp4_fps, dpi=100)
+    ani.save('media/'+'wgan_progress_'+str(opt.zone)+'_'+datetime.now().strftime('%Y%m%d_%H%M')+'.mp4', fps=mp4_fps, dpi=100)
 else:
-	plt.show()
+    plt.show()
