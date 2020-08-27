@@ -202,8 +202,8 @@ dataloader = torch.utils.data.DataLoader(
 # print(dataset[100])
 
 # Optimizers
-optimizer_G = torch.optim.RMSprop(generator.parameters(), lr=opt.lr)
-optimizer_D = torch.optim.RMSprop(discriminator.parameters(), lr=opt.lr)
+optimizer_G = torch.optim.Adam(generator.parameters(), lr=opt.lr)
+optimizer_D = torch.optim.Adam(discriminator.parameters(), lr=opt.lr)
 
 Tensor = torch.cuda.FloatTensor if cuda else torch.FloatTensor
 
@@ -334,8 +334,10 @@ def update(frameid):
     gen_losses.append(loss_G.item())
     
     # get fake points
-    latent = Variable(Tensor(np.random.normal(0, 1, (1023, opt.latent_dim))))
+    latent = Variable(Tensor(np.random.normal(0, 1, (len(real_pt_labels), opt.latent_dim))))
     test_labels = Variable(Tensor(np.array(real_pt_labels).reshape(-1,1))) #uniform speed distribution for testing
+    # print("latent.shape ", latent.shape)
+    # print("test_labels.shape", test_labels.shape)
     generated_ts = generator(latent, test_labels)
     gen_pts = generated_ts.view(-1).detach().numpy()
 
@@ -352,6 +354,8 @@ def update(frameid):
     if(avgksdist < minksdist):
         minksdist = avgksdist
         # save weights
+        torch.save(generator, 'models/cond_generator'+str(opt.zone))
+        torch.save(discriminator, 'models/cond_discriminator'+str(opt.zone))
     
     # plot the generated points
     if(opt.plot):
