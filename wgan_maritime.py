@@ -35,7 +35,8 @@ parser.add_argument("--sample_interval", type=int, default=400, help="interval b
 parser.add_argument("--plot", type=bool, default=False, help="plot the graphs")
 parser.add_argument("--savemp4", type=bool, default=False, help="savemp4?[plot has to be true for this to be true]")
 parser.add_argument("--improved_wgan", type=bool, default=False, help="use improved wgan(gradient penalty)?")
-parser.add_argument("--datafile", type=str, default='frodotransittimes.txt', help="real dataset file")
+parser.add_argument("--datafile", type=str, default='data/transittimes.txt', help="dataset file")
+parser.add_argument("--loadsaved", type=bool, default=False, help="load saved model?")
 
 opt = parser.parse_args()
 print(opt)
@@ -178,8 +179,11 @@ class Discriminator(nn.Module):
 
 # Initialize generator and discriminator
 generator = Generator()
-generator = torch.load('models/generator'+str(opt.zone))
 discriminator = Discriminator()
+
+if opt.loadsaved:
+    generator = torch.load('models/generator'+str(opt.zone))
+    discriminator = torch.load('models/discriminator'+str(opt.zone))
 
 if cuda:
     generator.cuda()
@@ -324,7 +328,8 @@ def update(frameid):
         minksdist = ksdist
         #save weights
         torch.save(generator, 'models/generator'+str(opt.zone))
-    
+        torch.save(discriminator, 'models/discriminator'+str(opt.zone))
+        fig.savefig('uncond_wgan_mtm'+str(opt.zone)+'.png')
     # plot the generated points
     if(opt.plot):
         #=======right graph========#
