@@ -1,18 +1,39 @@
 import pandas as pd
 import geopandas as gpd
 import numpy as np
+
 import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 import matplotlib.patches as patches
+import matplotlib.patches as mpatches
+from matplotlib.offsetbox import OffsetImage, AnnotationBbox
+
+import cv2
+
 import os
 from shapely.geometry import Point, Polygon
 import time
-import matplotlib.patches as mpatches
 from datetime import datetime, timedelta
 import math
 import argparse
 
+# plt.ion()
+
+
+
+def getImage(path):
+    return OffsetImage(plt.imread(path))
+
+# imgfilename = 'imgdata/anchor_2.png'
+# imgfilename = 'imgdata/pngtree-vector-anchor-material-png-image_798856.jpg'
+# imgfilename = 'imgdata/output-onlinepngtools.png'
+# imgfilename = 'imgdata/ship_icon.png'
+shipimgfilename = 'imgdata/ship_filled_small.png'
+anchorimgfilename = 'imgdata/anchor_trans_smaller.png'
+# imgfilename = 'imgdata/shipimg.png'
+
+    
 parser = argparse.ArgumentParser()
 # add hyperparams here
 parser.add_argument("--mp4",  type=bool, default=False, help='save as mp4 or display now') 
@@ -37,8 +58,8 @@ debug = False
 highlight_zones = False # makes things slow TODO: optimise
 borderCol = 'black' # alternative : 'black'
 frameskip_count = 1	
-animation_fps = 10 # TODO: change these numbers as per convenience
-mp4_fps = 15
+animation_fps = 20 # TODO: change these numbers as per convenience
+mp4_fps = 10
 
 if debug:
 	frameskip_count = 1
@@ -222,7 +243,7 @@ def interpolate(arr, t): # TODO: optimise
 	# print(left[1] + lat, left[2] + lon)
 	# sys.exit()
 	# print("left[3]", left[3])
-	return  lat, lon, heading, left[4]
+	return  lat, lon, heading, left[4], left[5]
 
 #=======================#
 def getVesselColor():
@@ -245,7 +266,7 @@ vessels = {}
 for i in range(datalen):
 	mmsi = data["MMSI"][i]
 	time_obj = datetime.strptime(data["TIMESTAMP"][i], timestamp_format)
-	rowvalue = (time_obj, data["LAT"][i] , data["LON"][i], data["HEADING"][i], getVesselColor())
+	rowvalue = (time_obj, data["LAT"][i] , data["LON"][i], data["HEADING"][i], getVesselColor(), data["STATUS"][i])
 	if(mmsi in vessels):
 		vessels[mmsi].append(rowvalue)
 	else:
@@ -262,8 +283,8 @@ while timestep != endtime:
 	vessel_timestep_map = {}
 	for mmsi, vesseltimes in vessels.items():
 		if (timestep > vesseltimes[0][0] and timestep < vesseltimes[-1][0]):
-			lat, lon, heading, col =interpolate(vesseltimes, timestep)
-			vessel_timestep_map[mmsi] = (lat, lon, heading, col) # TODO: add heading
+			lat, lon, heading, col, status =interpolate(vesseltimes, timestep)
+			vessel_timestep_map[mmsi] = (lat, lon, heading, col, status) # TODO: add heading
 	interpolatedLatlongs.append(vessel_timestep_map)
 	timesteps.append(timestep)
 
@@ -275,7 +296,7 @@ n_frames = len(timesteps)
 # patch = patches.FancyArrow(lons[0][0], lats[0][0], lons[0][0], lats[0][0], width=0.005, head_width=0.005, head_length=0.005, color='black')
 patch = None
 #TODO: where to place this
-time_text = plt.text(103.85,1.05, "Current_time")
+time_text = plt.text(103.54,1.03, "Current_time")
 
 def dist(x1, y1, x2, y2): # Euclidean distance
 	return np.sqrt((x1-x2)**2 + (y1-y2)**2)
@@ -288,17 +309,51 @@ def init():
 
 startTime = time.time()
 
+
+
+def rotate_bound(image, angle):
+    # grab the dimensions of the image and then determine the
+    # center
+    (h, w) = image.shape[:2]
+    (cX, cY) = (w // 2, h // 2)
+
+    # grab the rotation matrix (applying the negative of the
+    # angle to rotate clockwise), then grab the sine and cosine
+    # (i.e., the rotation components of the matrix)
+    M = cv2.getRotationMatrix2D((cX, cY), -angle, 1.0)
+    cos = np.abs(M[0, 0])
+    sin = np.abs(M[0, 1])
+
+    # compute the new bounding dimensions of the image
+    nW = int((h * sin) + (w * cos))
+    nH = int((h * cos) + (w * sin))
+
+    # adjust the rotation matrix to take into account translation
+    M[0, 2] += (nW / 2) - cX
+    M[1, 2] += (nH / 2) - cY
+
+    # perform the actual rotation and return the image
+    return cv2.warpAffine(image, M, (nW, nH), borderValue=(255,255,255))
+
+
 """
 Function to update the frame for each time step.
 """
-def update(frame): 
+def update(frame):
+	# plt.clf() 
 	print("frame %d: %.2f"%(frame, time.time()-startTime))
 	frame = frame * frameskip_count	# To speed up the animation
 
 	global patch
 	global time_text
-
+	global ax
+	
 	[p.remove() for p in reversed(ax.patches)]
+	[p.remove() for p in reversed(ax.artists)]
+
+	# for child in ax.get_children():
+	# 	if isinstance(child, matplotlib.text.Annotation):
+	# 		child.remove()
 	arrowScale = 0.008
 	ship_cur_positions = []
 	time_text.set_text(timesteps[frame])
@@ -308,8 +363,39 @@ def update(frame):
 		longitude = vessel[1]
 		heading = vessel[2]/360 * 2 * math.pi
 		
-		patch = patches.FancyArrowPatch((longitude - arrowScale * math.cos(heading), latitude - arrowScale * math.sin(heading)), (longitude, latitude), arrowstyle=style, color=vessel[3])
-		plt.gca().add_patch(patch)
+		#TODO: change the direction here.. Get the heading from other point
+		
+		if frame == 0 or mmsi not in interpolatedLatlongs[frame-1]:
+			heading = vessel[2]/360 * 2 * math.pi
+			patch = patches.FancyArrowPatch((longitude - arrowScale * math.cos(heading), latitude - arrowScale * math.sin(heading)), (longitude, latitude), arrowstyle=style, color='red') #TODO: color could be vessel[3]
+		else:
+			vessel_prev_pos = interpolatedLatlongs[frame-1][mmsi]
+			latdiff = latitude - vessel_prev_pos[0]
+			londiff = longitude - vessel_prev_pos[1]
+			difflength = math.sqrt(latdiff**2 + londiff**2)
+			if(difflength == 0):
+				difflength = 1.0
+			# heading = math.atan(latdiff/londiff) if londiff != 0 else math.pi/2 # 90 degrees if londiff = 0
+
+			patch = patches.FancyArrowPatch((longitude - arrowScale * londiff /difflength, latitude - arrowScale * latdiff /difflength), (longitude, latitude), arrowstyle=style, color='red') #TODO: color could be vessel[3]
+		
+		status = vessel[4]
+		
+		if(int(status) not in [1,5]): # [0, 8, 99 ] means running
+			plt.gca().add_patch(patch)
+		else:
+			imgfilename = shipimgfilename if int(status) not in [1,5 ]  else anchorimgfilename
+
+		# image = cv2.imread(imgfilename)
+
+		# rotated_image = rotate_bound(image, 78)
+		# zoom = 1
+		# im = OffsetImage(image, zoom=zoom)
+
+		# TODO: Add if makes sense
+			ab = AnnotationBbox(getImage(imgfilename), (longitude, latitude), frameon=False)
+			ax.add_artist(ab) 
+
 	# Calcuate new longitude and new Latitude and plot it.
 	# for i in range(total_vessels):
 	# 	if frame+1 < len(lons[i]) : # If animation in progress
@@ -397,9 +483,9 @@ if debug:
 ani = FuncAnimation(fig, update, frames=n_frames, init_func=init, blit=False, repeat=False, interval = 1000/animation_fps)
 handles = [mpatches.Patch(color=col, label=description) for col, description in zip(zoneTypeColors, zoneTypeFileNames)]
 handles = handles + [mpatches.Patch(color=col, label=description) for description,col in vesselcolor[color_attrib].items()]
-plt.legend(bbox_to_anchor=(1.0, 1.0), loc='upper left', title="legend", borderaxespad=0.,handles=handles)
+# plt.legend(bbox_to_anchor=(1.0, 1.0), loc='upper left', title="legend", borderaxespad=0.,handles=handles)
 	
 if savemp4:
-	ani.save('media/'+opt.video_name+datetime.now().strftime('%Y%m%d_%H%M')+'.mp4', fps=mp4_fps, dpi=100)
+	ani.save('media/'+opt.video_name+datetime.now().strftime('%Y%m%d_%H%M')+'.mp4', fps=mp4_fps, dpi=100, savefig_kwargs = {"bbox_inches": "tight", "pad_inches": 0.0})
 else:
 	plt.show()

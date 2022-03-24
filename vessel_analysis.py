@@ -9,6 +9,18 @@ from shapely.geometry import Point, Polygon
 import sys
 import math
 import time
+from multiprocessing import Pool
+import matplotlib.patches as mpatches
+
+# from matplotlib import rc
+# import matplotlib.pylab as plt
+
+# rc('font', **{'family': 'serif', 'serif': ['Computer Modern']})
+# rc('text', usetex=True)
+# import matplotlib.font_manager as font_manager
+# font_manager._rebuild()
+
+matplotlib.rc('font',family='Times New Roman')
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--latlonfile",  default='data/two_ships.csv', help='file with ship location data(AIS)') 
@@ -26,7 +38,7 @@ print(opt)
 startime = time.time()
 vessel_csv_filename=opt.latlonfile
 rows_to_read = opt.rows_to_read
-interval = 1
+interval = 30
 timestamp_format = '%Y-%m-%d %H:%M:%S'
 
 data = pd.read_csv(vessel_csv_filename)
@@ -70,12 +82,12 @@ def destination(vessels):
 #=====================================================================#
 # prev nearest function for endtime
 def prevnear(timestamp, interval):
-	newminute = timestamp.minute - timestamp.minute%interval
-	return timestamp.replace(second=0, minute=newminute)
+	newsecond = timestamp.second - timestamp.second%interval
+	return timestamp.replace(second=newsecond)
 
 # next nearest function for startime
 def nextnear(timestamp, interval):
-	return prevnear(timestamp + timedelta(minutes=interval), interval)
+	return prevnear(timestamp + timedelta(seconds=interval), interval)
 
 #find the best latlong value given time t and a set of latlong,t pairs.
 def interpolate(arr, t): # TODO: optimise
@@ -222,7 +234,29 @@ def categorise_trajectory(trajectories):
     print("discarded: ", discarded)
     # print(traj_type)
     return traj_freq, traj_type_sample, traj_type
+
+def interpolate_traj(traj_context):
+    mmsi_t, trajectory = traj_context
+    first_time = nextnear(totime(data['TIMESTAMP'][trajectory[0]]), interval)
+    last_time = prevnear(totime(data['TIMESTAMP'][trajectory[-1]]), interval)
+    timestep = first_time
+    i=0
+    int_rows = []
+    while timestep <= last_time:
+        interpolated_row=interpolate(trajectory, timestep)
+        int_rows.append(interpolated_row)
         
+        timestep = timestep + timedelta(seconds=interval)
+        i+=1
+
+    events_df = pd.DataFrame(index=np.arange(0, len(int_rows)),  columns = ['STATUS', 'SPEED (KNOTSx10)', 'LON', 'LAT', 'COURSE', 'HEADING', 'TIMESTAMP'])
+    for i,int_row in enumerate(int_rows):
+        events_df.loc[i] = int_row
+
+    events_df.to_csv('data/all_30_sec_events/'+mmsi_t+'.csv', index=False)
+    print("\ttrajectory count %s, time: %.2f" % (str(mmsi_t), time.time()-startime))
+        
+
 def save_traj_table(trajectories, traj_type):
 
     '''save the ship table first'''
@@ -230,41 +264,44 @@ def save_traj_table(trajectories, traj_type):
     for i, key in enumerate(trajectories):
         print(key)
         ship_df.loc[i]= [key] + [ data[x][trajectories[key][0]] for x in columns[1:6] ] + [traj_type[key]]
-    ship_df.to_csv('data/all_mmsi_traj.csv', index=False)
+    ship_df.to_csv('data/all_30_sec_mmsi_traj.csv', index=False)
     
     '''save the events table'''
-    tc=0
-    printevery = 100
-    for mmsi_t, trajectory in trajectories.items():
-        if(tc%printevery == 0):
-            print("traj ", tc, mmsi_t)
-            sys.stdout.flush()
+    with Pool() as pool:
+        pool.map(interpolate_traj, trajectories.items())
 
-        # TODO: do interpolation before saving
-        first_time = nextnear(totime(data['TIMESTAMP'][trajectory[0]]), interval)
-        last_time = prevnear(totime(data['TIMESTAMP'][trajectory[-1]]), interval)
-        timestep = first_time
-        i=0
-        int_rows = []
-        while timestep <= last_time:
-            interpolated_row=interpolate(trajectory, timestep)
-            int_rows.append(interpolated_row)
+    # tc=0
+    # printevery = 1
+    # for mmsi_t, trajectory in trajectories.items():
+    #     if(tc%printevery == 0):
+    #         print("traj ", tc, mmsi_t)
+    #         sys.stdout.flush()
+
+    #     # TODO: do interpolation before saving
+    #     first_time = nextnear(totime(data['TIMESTAMP'][trajectory[0]]), interval)
+    #     last_time = prevnear(totime(data['TIMESTAMP'][trajectory[-1]]), interval)
+    #     timestep = first_time
+    #     i=0
+    #     int_rows = []
+    #     while timestep <= last_time:
+    #         interpolated_row=interpolate(trajectory, timestep)
+    #         int_rows.append(interpolated_row)
             
-            timestep = timestep + timedelta(minutes=interval)
-            i+=1
+    #         timestep = timestep + timedelta(seconds=interval)
+    #         i+=1
         
-        if(tc%printevery == 0):
-            print("\t before to_csv %d, time: %.2f" % (tc, time.time()-startime))
+    #     if(tc%printevery == 0):   
+    #         print("\t before to_csv %d, time: %.2f" % (tc, time.time()-startime))
 
-        events_df = pd.DataFrame(index=np.arange(0, len(int_rows)),  columns = ['STATUS', 'SPEED (KNOTSx10)', 'LON', 'LAT', 'COURSE', 'HEADING', 'TIMESTAMP'])
-        for i,int_row in enumerate(int_rows):
-            events_df.loc[i] = int_row
-        # for i, rowid in enumerate(trajectory):
-        #     events_df.loc[i] = [ data[x][rowid] for x in columns[6:13] ]
-        events_df.to_csv('data/all_events/'+mmsi_t+'.csv', index=False)
-        if(tc%printevery == 0):
-            print("\ttrajectory count %d, time: %.2f" % (tc, time.time()-startime))
-        tc+=1
+    #     events_df = pd.DataFrame(index=np.arange(0, len(int_rows)),  columns = ['STATUS', 'SPEED (KNOTSx10)', 'LON', 'LAT', 'COURSE', 'HEADING', 'TIMESTAMP'])
+    #     for i,int_row in enumerate(int_rows):
+    #         events_df.loc[i] = int_row
+    #     # for i, rowid in enumerate(trajectory):
+    #     #     events_df.loc[i] = [ data[x][rowid] for x in columns[6:13] ]
+    #     events_df.to_csv('data/all_30_sec_events/'+mmsi_t+'.csv', index=False)
+    #     if(tc%printevery == 0):
+    #         print("\ttrajectory count %d, time: %.2f" % (tc, time.time()-startime))
+    #     tc+=1
     
 	
 
@@ -293,7 +330,9 @@ if(opt.save_traj_table):
 if(opt.trajectory_type_analysis):
     ax.set_xlim(103.535, 104.03)
     ax.set_ylim(1.02, 1.32)
-
+    ax.set_facecolor('azure')
+    ax.get_yaxis().set_visible(False)
+    ax.get_xaxis().set_visible(False)
     
 
     print("traj_freq")
@@ -306,9 +345,39 @@ if(opt.trajectory_type_analysis):
     colorrs = ['aliceblue','yellowgreen']
     borderCol='gray'
 
+    tsscol= 'darkslateblue'
+    fairwaycol = 'skyblue'
+    ancragecol = 'salmon'
+    handles = [mpatches.Patch(color=ancragecol, label='Anchorage'),
+        mpatches.Patch(color=tsscol, label='TSS'),
+        mpatches.Patch(color=fairwaycol, label='Fairway'),
+        mpatches.Patch(color='yellowgreen', label='Landmass'),
+        mpatches.Patch(color='azure', label='open waters')]
+
     for zoneFile,colorr in zip(zoneFileList,colorrs):
         gdf = gpd.GeoDataFrame.from_file(opt.zone_file_location+'/'+zoneFile)
-        gdf.plot(ax=ax, color=colorr, edgecolors=borderCol)
+        if(zoneFile is 'zones.shp'):
+            ll = 10
+            polygons = gdf.geometry.values
+            poly_count = len(polygons)
+
+            tsspolyids = [x for x in range(20)]
+            fairwaypolyids = [x for x in range(20, 30)]
+            anchoragepolyids = [x for x in range(30, 48)]
+            
+            polycolors = ['aliceblue']* poly_count
+            # hatches = ['//'] * poly_count
+            for i in anchoragepolyids:
+                polycolors[i] = ancragecol
+                # hatches[i] = '*'
+            for i in tsspolyids:
+                polycolors[i] = tsscol
+            for i in fairwaypolyids:
+                polycolors[i] = fairwaycol
+            gdf.plot(ax=ax, color=polycolors, edgecolors=borderCol)
+        else:
+            gdf.plot(ax=ax, color=colorr, edgecolors=borderCol)
+    plt.legend(bbox_to_anchor=(0.02, 0.0), loc='upper left', borderaxespad=0., ncol=3, handles= handles, prop={'size':25}, fontsize=10)
     plt.show()
 
 print("len(trajectories): , ", len(trajectories))

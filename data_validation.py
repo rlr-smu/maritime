@@ -22,6 +22,7 @@ parser.add_argument("--exit_entry_diff",  type=int,  default=12, help="differenc
 parser.add_argument("--zone_traffic",  type=bool,  default=False, help="display zone traffic") 
 parser.add_argument("--separate_zone_plot",  type=bool,  default=False, help="plot each zone or sum of zones") 
 parser.add_argument("--daily_bins",  type=bool,  default=False, help="daily bins?") 
+parser.add_argument("--mmsi_of_interest", type=int,  default=477712400, help='which mmsi path to show in zone map') 
 
 opt = parser.parse_args()
 print(opt)
@@ -339,7 +340,7 @@ if(opt.zone_traffic):
 		plt.plot(timesteps, total_ships_per_timestamp, label='TOTAL ships')
 		plt.show()
 
-	zones_to_plot = [x for x in range(64)]
+	zones_to_plot = [x for x in range(23)]+[24,27] # tsslpt zones (0-22, 24, 27)
 	# zones_to_plot = [22,25]
 	int_plot = np.zeros(shape=(len(polygons), len(timesteps)))
 	for t, val in enumerate(interpolatedLatlongs):
@@ -419,14 +420,14 @@ if(opt.show_map):
 		# sys.exit()
 		pind_text = plt.text(polygon.centroid.x, polygon.centroid.y, str(pind),color='w')
 	
-	# mmsi_of_interest = 563034560
-	mmsi_of_interest = 312471000
+	mmsi_of_interest = opt.mmsi_of_interest
 	lats = [data_point[1] for data_point in vessels[mmsi_of_interest]]
 	lons = [data_point[2] for data_point in vessels[mmsi_of_interest]]
 	# print(lats)
 	# plt.plot([1.023,1.024],[103.6, 103.7], label = 'ship route', color='r')
-	lll = 200
-	plt.plot(lons[:lll], lats[:lll], 'b')
-	plt.plot(lons[lll-1:], lats[lll-1:], 'r')
+	lll = 100
+	plt.plot(lons[:lll], lats[:lll], 'b-')
+	plt.plot(lons[lll-1:], lats[lll-1:], 'r-')
+	plt.plot(lons, lats, 'g.')
 
 	plt.show()
