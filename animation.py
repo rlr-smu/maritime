@@ -10,6 +10,8 @@ from shapely.geometry import Point, Polygon
 import time
 import matplotlib.patches as mpatches
 
+
+# Simple animation of ships moving in the strait
 # FLAGS
 savemp4 = False
 debug = False

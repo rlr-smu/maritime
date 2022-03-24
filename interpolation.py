@@ -4,6 +4,8 @@ import numpy as np
 import matplotlib.patches as mpatches
 import math
 
+# Interpolating the vessel position given the raw data
+
 input_file = 'data/one_Vessel_Position_raw.csv'
 # input_file = 'data/zero_imo.csv'
 # input_file = 'data/mmsi0.csv'

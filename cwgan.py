@@ -18,6 +18,7 @@ from matplotlib.pyplot import savefig
 from datetime import datetime, timedelta
 from torch.autograd import grad as torch_grad
 
+# Conditional wassserstein GAN(the travel time is conditioned on speed)
 
 os.makedirs("media", exist_ok=True)
 
