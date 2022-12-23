@@ -40,7 +40,7 @@ parser.add_argument("--mp4",  type=bool, default=False, help='save as mp4 or dis
 parser.add_argument("--latlonfile",  default='data/two_ships.csv', help='file with ship location data(AIS)') 
 parser.add_argument("--rows_to_read", type=int,  default=1000, help="limit the number of rows from latlonfile") 
 parser.add_argument("--interval", type=int,  default=2, help="interval in minutes between each frame")
-parser.add_argument("--parent_dir", default='/mnt/c/Users/chetu/work/maritime/encdata/', help='directory with ENC zone data')
+parser.add_argument("--parent_dir", default='./', help='directory with ENC zone data')
 parser.add_argument("--color_on_type",  type=bool, default=True, help='Color ships based on type or status')
 parser.add_argument("--video_name", default='maritime', help='video will be media/"video_name"YYYYMMDD_HHmm.mp4')
 
